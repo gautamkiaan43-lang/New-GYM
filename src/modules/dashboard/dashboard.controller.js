@@ -15,7 +15,8 @@ export const getDashboardData = async (req, res, next) => {
 
 export const getSuperAdminDashboard = async (req, res, next) => {
   try {
-    const data = await superAdminDashboardService();
+    const branchId = req.query.branchId;
+    const data = await superAdminDashboardService(branchId);
     res.json({
       success: true,
       message: "Dashboard loaded successfully",

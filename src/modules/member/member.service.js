@@ -1,4 +1,5 @@
 import { pool } from "../../config/db.js";
+import XLSX from "xlsx";
 
 /**************************************
  * CREATE MEMBER
@@ -23,6 +24,7 @@ export const createMemberService = async (data) => {
     address,
     adminId,
     profileImage,
+    goal,
   } = data;
 
   if (!fullName || !email || !password) {
@@ -97,8 +99,8 @@ export const createMemberService = async (data) => {
     `INSERT INTO member
       (userId, fullName, email, password, phone, planId, membershipFrom, membershipTo,
        dateOfBirth, paymentMode, amountPaid, branchId, gender, interestedIn, address, 
-       adminId, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active')`,
+       adminId, status, goal)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?)`,
     [
       userId,
       fullName,
@@ -116,6 +118,7 @@ export const createMemberService = async (data) => {
       interestedIn || null,
       address || null,
       adminId || null,
+      goal || null,
     ]
   );
 
@@ -636,6 +639,7 @@ export const updateMemberService = async (id, data) => {
     adminId = existing.adminId,
     status = existing.status,
     profileImage, // ✅ ONLY FOR USER TABLE
+    goal = existing.goal,
   } = data;
 
   /* --------------------------------
@@ -697,7 +701,8 @@ export const updateMemberService = async (id, data) => {
       interestedIn = ?,
       address = ?,
       adminId = ?,
-      status = ?
+      status = ?,
+      goal = ?
      WHERE id = ?`,
     [
       fullName,
@@ -716,6 +721,7 @@ export const updateMemberService = async (id, data) => {
       address,
       adminId,
       status,
+      goal,
       id,
     ]
   );
@@ -1367,4 +1373,202 @@ export const getMembersByAdminAndGeneralMemberPlanService = async (
   } catch (error) {
     throw error;
   }
+};
+
+/**************************************
+ * EXCEL MEMBER IMPORT
+ **************************************/
+export const importMembersService = async (adminId, branchId, fileBuffer) => {
+  const parsedAdminId = parseInt(adminId);
+  const parsedBranchId = branchId ? parseInt(branchId) : null;
+
+  if (!parsedAdminId) {
+    throw { status: 400, message: "adminId is required" };
+  }
+
+  // Read the workbook from buffer
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer' });
+  const sheetName = workbook.SheetNames[0];
+  const sheet = workbook.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(sheet);
+
+  if (!rows || rows.length === 0) {
+    throw { status: 400, message: "Excel sheet is empty or invalid" };
+  }
+
+  // Row limit of 500 rows to prevent server timeout
+  if (rows.length > 500) {
+    throw { status: 400, message: "Max 500 rows allowed per import" };
+  }
+
+  let successCount = 0;
+  const skippedList = [];
+
+  // Get all existing member plans for this admin so we can map Plan Name to planId
+  const [dbPlans] = await pool.query(
+    "SELECT id, name, validityDays, price FROM memberplan WHERE adminId = ?",
+    [parsedAdminId]
+  );
+  
+  // Create a helper map: lowercased plan name -> plan object
+  const planMap = new Map();
+  dbPlans.forEach(plan => {
+    planMap.set(plan.name.trim().toLowerCase(), plan);
+  });
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    
+    // Normalize headers (case-insensitive and trim spaces)
+    const normalizedRow = {};
+    Object.keys(row).forEach(key => {
+      normalizedRow[key.trim().toLowerCase()] = row[key];
+    });
+
+    const fullName = normalizedRow["full name"] || normalizedRow["name"];
+    const phone = normalizedRow["phone"] || normalizedRow["phone number"] || normalizedRow["mobile"];
+    const email = normalizedRow["email"] || normalizedRow["email address"];
+    const gender = normalizedRow["gender"];
+    const address = normalizedRow["address"];
+    const planName = normalizedRow["plan name"] || normalizedRow["plan"];
+    const goal = normalizedRow["goal"];
+    const dob = normalizedRow["date of birth"] || normalizedRow["dob"] || normalizedRow["birthdate"];
+
+    // Validate mandatory fields
+    if (!fullName || !phone) {
+      skippedList.push({
+        name: fullName || `Row ${i + 2}`,
+        phone: phone || "N/A",
+        reason: "Missing Name or Phone Number"
+      });
+      continue;
+    }
+
+    const phoneStr = String(phone).trim();
+    const cleanName = String(fullName).trim();
+
+    // Handle email - auto generate if missing
+    let cleanEmail = email ? String(email).trim().toLowerCase() : `${phoneStr}@temp.gym.com`;
+
+    try {
+      // Check if email or phone already exists in user or member tables
+      const [existingUser] = await pool.query(
+        "SELECT id FROM user WHERE email = ? OR phone = ?",
+        [cleanEmail, phoneStr]
+      );
+      
+      const [existingMember] = await pool.query(
+        "SELECT id FROM member WHERE email = ? OR phone = ?",
+        [cleanEmail, phoneStr]
+      );
+
+      if (existingUser.length > 0 || existingMember.length > 0) {
+        skippedList.push({
+          name: cleanName,
+          phone: phoneStr,
+          reason: "Email or Phone already exists in the system"
+        });
+        continue;
+      }
+
+      // Password hashing: use phone number as default password
+      const hashedPassword = await bcrypt.hash(phoneStr, 10);
+
+      // Parse dates
+      const dobDate = dob ? new Date(dob) : null;
+      const startDate = new Date();
+      let endDate = null;
+      let matchedPlanId = null;
+      let matchedPlan = null;
+
+      // Plan matching
+      if (planName) {
+        const cleanPlanName = String(planName).trim().toLowerCase();
+        matchedPlan = planMap.get(cleanPlanName);
+        if (matchedPlan) {
+          matchedPlanId = matchedPlan.id;
+          endDate = new Date(startDate);
+          const days = Number(matchedPlan.validityDays || 30);
+          endDate.setDate(endDate.getDate() + days);
+        }
+      }
+
+      // 1. Insert into User table
+      const [userResult] = await pool.query(
+        `INSERT INTO user 
+          (adminId, fullName, email, password, phone, roleId, branchId, address, dateOfBirth, status)
+         VALUES (?, ?, ?, ?, ?, 4, ?, ?, ?, 'Active')`,
+        [
+          parsedAdminId,
+          cleanName,
+          cleanEmail,
+          hashedPassword,
+          phoneStr,
+          parsedBranchId,
+          address ? String(address).trim() : null,
+          dobDate,
+        ]
+      );
+
+      const userId = userResult.insertId;
+
+      // 2. Insert into Member table
+      const [memberRes] = await pool.query(
+        `INSERT INTO member
+          (userId, fullName, email, password, phone, planId, membershipFrom, membershipTo,
+           dateOfBirth, branchId, gender, address, adminId, status, goal)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?)`,
+        [
+          userId,
+          cleanName,
+          cleanEmail,
+          hashedPassword,
+          phoneStr,
+          matchedPlanId,
+          startDate,
+          endDate,
+          dobDate,
+          parsedBranchId,
+          gender ? String(gender).trim() : null,
+          address ? String(address).trim() : null,
+          parsedAdminId,
+          goal ? String(goal).trim() : null
+        ]
+      );
+
+      const memberId = memberRes.insertId;
+
+      // 3. Insert into member_plan_assignment if plan matched
+      if (matchedPlanId && matchedPlan) {
+        await pool.query(
+          `INSERT INTO member_plan_assignment 
+            (memberId, planId, membershipFrom, membershipTo, paymentMode, amountPaid, status, assignedBy, assignedAt)
+           VALUES (?, ?, ?, ?, 'Excel Import', ?, 'Active', ?, NOW())`,
+          [
+            memberId,
+            matchedPlanId,
+            startDate,
+            endDate,
+            matchedPlan.price || 0,
+            parsedAdminId
+          ]
+        );
+      }
+
+      successCount++;
+    } catch (rowErr) {
+      console.error(`Error importing row ${i + 2}:`, rowErr);
+      skippedList.push({
+        name: cleanName,
+        phone: phoneStr,
+        reason: rowErr.message || "Database Insert Error"
+      });
+    }
+  }
+
+  return {
+    successCount,
+    skippedCount: skippedList.length,
+    skippedList
+  };
 };

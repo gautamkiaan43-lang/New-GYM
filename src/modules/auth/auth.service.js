@@ -169,6 +169,7 @@ export const loginUser = async ({ email, password }) => {
       u.branchId,
       u.adminId,
       u.profileImage,
+      u.permissions,
       r.name AS roleName,
       b.name AS branchName
     FROM user u
@@ -290,6 +291,7 @@ export const loginUser = async ({ email, password }) => {
       memberId: memberId,   // ✅ NOW GUARANTEED
 
       profileImage: user.profileImage || null,
+      permissions: user.permissions ? JSON.parse(user.permissions) : [],
     },
   };
 };
@@ -789,7 +791,9 @@ export const changeUserPassword = async (id, oldPassword, newPassword) => {
 // };
 
 
-export const getAdminDashboardData = async (adminId) => {
+export const getAdminDashboardData = async (adminId, branchId = null) => {
+  const bId = (branchId === "all" || branchId === "") ? null : branchId;
+
   // 5 CARDS
   const statsQuery = `
     SELECT 
@@ -797,6 +801,7 @@ export const getAdminDashboardData = async (adminId) => {
      (SELECT COUNT(*) 
  FROM member 
  WHERE adminId = ?
+   ${bId ? "AND branchId = ?" : ""}
    AND membershipTo IS NOT NULL
    AND DATE(membershipFrom) <= CURDATE()
    AND DATEDIFF(membershipTo, CURDATE()) > 0
@@ -805,12 +810,15 @@ export const getAdminDashboardData = async (adminId) => {
 
       -- Staff count
       (SELECT COUNT(*) FROM staff 
-        WHERE status = 'Active' AND adminId = ?) AS totalStaff,
+        WHERE status = 'Active' AND adminId = ?
+        ${bId ? "AND branchId = ?" : ""}
+        ) AS totalStaff,
 
       -- Today's Member Check-ins (JOIN member → user → adminId)
       (SELECT COUNT(*) FROM memberattendance ma
         JOIN member m ON ma.memberId = m.userId
         WHERE m.adminId = ?
+        ${bId ? "AND m.branchId = ?" : ""}
         AND DATE(ma.checkIn) = CURDATE()
       ) AS todaysMemberCheckins,
 
@@ -819,6 +827,7 @@ export const getAdminDashboardData = async (adminId) => {
         FROM memberattendance ma
         JOIN staff s ON ma.memberId = s.userId
         WHERE s.adminId = ?
+        ${bId ? "AND s.branchId = ?" : ""}
         AND DATE(ma.checkIn) = CURDATE()
       ) AS todaysStaffCheckins
   `;
@@ -831,6 +840,7 @@ export const getAdminDashboardData = async (adminId) => {
     FROM user
     WHERE roleId = 4
       AND adminId = ?
+      ${bId ? "AND branchId = ?" : ""}
       AND createdAt >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
     GROUP BY YEAR(createdAt), MONTH(createdAt)
     ORDER BY YEAR(createdAt), MONTH(createdAt);
@@ -845,6 +855,7 @@ const recentActivitiesQuery = `
       'member' AS type
     FROM member
     WHERE adminId = ?
+    ${bId ? "AND branchId = ?" : ""}
   )
 
   UNION ALL
@@ -856,6 +867,7 @@ const recentActivitiesQuery = `
       'class_booking' AS type
     FROM booking_requests
     WHERE adminId = ?
+    -- booking_requests doesn't have branchId directly in schema usually, ignoring filter
   )
 
   UNION ALL
@@ -868,28 +880,31 @@ const recentActivitiesQuery = `
     FROM staffattendance sa
     JOIN staff s ON sa.staffId = s.id
     WHERE s.adminId = ?
+    ${bId ? "AND s.branchId = ?" : ""}
   )
 
   ORDER BY time DESC
   LIMIT 5;
   `;
 
-const [recentActivities] = await pool.query(recentActivitiesQuery, [
-  adminId,
-  adminId,
-  adminId,
-  adminId
-]);
+  const statsParams = [];
+  statsParams.push(adminId); if (bId) statsParams.push(bId);
+  statsParams.push(adminId); if (bId) statsParams.push(bId);
+  statsParams.push(adminId); if (bId) statsParams.push(bId);
+  statsParams.push(adminId); if (bId) statsParams.push(bId);
 
-  const [stats] = await pool.query(statsQuery, [
-    adminId,
-    adminId,
-    adminId,
-    adminId,
-    adminId,
-  ]);
+  const [stats] = await pool.query(statsQuery, statsParams);
 
-  const [memberGrowth] = await pool.query(memberGrowthQuery, [adminId]);
+  const growthParams = [adminId];
+  if (bId) growthParams.push(bId);
+  const [memberGrowth] = await pool.query(memberGrowthQuery, growthParams);
+
+  const recentParams = [];
+  recentParams.push(adminId); if (bId) recentParams.push(bId);
+  recentParams.push(adminId); // booking_requests
+  recentParams.push(adminId); if (bId) recentParams.push(bId);
+
+  const [recentActivities] = await pool.query(recentActivitiesQuery, recentParams);
 
   return {
     ...stats[0],

@@ -39,6 +39,7 @@ import reportsRoutes from "../modules/reports/reports.routes.js"
 import adminSettingsRoutes from "../modules/appSettings/appSetting.routes.js"
 import leadRoutes from "../modules/leads/lead.routes.js";
 import healthRoutes from "../modules/health/health.routes.js";
+import subadminRoutes from "../modules/subadmin/subadmin.routes.js";
 const router = Router();
 
 // test route
@@ -85,5 +86,6 @@ router.use("/booking", bookingRoutes);
 router.use("/adminSettings", adminSettingsRoutes);
 router.use("/leads", leadRoutes);
 router.use("/health", healthRoutes);
+router.use("/subadmins", subadminRoutes);
 
 export default router;

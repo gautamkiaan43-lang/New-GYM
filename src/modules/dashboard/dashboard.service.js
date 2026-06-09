@@ -155,12 +155,19 @@ export const dashboardService = async () => {
 //   };
 // };
 
-export const superAdminDashboardService = async () => {
+export const superAdminDashboardService = async (branchId = null) => {
+  const bId = (branchId === "all" || branchId === "") ? null : branchId;
+
+  // Helper for adding WHERE clause
+  const getBranchFilter = (tableAlias) => {
+    return bId ? ` AND ${tableAlias}.branchId = ${pool.escape(bId)}` : "";
+  };
+
   // ================================
   // 1️⃣ TOTAL REVENUE
   // ================================
   const [[totalRev]] = await pool.query(
-    `SELECT SUM(amountPaid) AS totalRevenue FROM member`
+    `SELECT SUM(amountPaid) AS totalRevenue FROM member m WHERE 1=1 ${getBranchFilter('m')}`
   );
 
   // ================================
@@ -168,16 +175,19 @@ export const superAdminDashboardService = async () => {
   // ================================
   const [[monthlyRev]] = await pool.query(
     `SELECT SUM(amountPaid) AS monthlyRevenue 
-     FROM member 
+     FROM member m
      WHERE MONTH(membershipFrom) = MONTH(CURRENT_DATE()) 
-       AND YEAR(membershipFrom) = YEAR(CURRENT_DATE())`
+       AND YEAR(membershipFrom) = YEAR(CURRENT_DATE())
+       ${getBranchFilter('m')}`
   );
 
   // ================================
   // 3️⃣ TOTAL ADMINS
   // ================================
+  // Admins might not belong to a specific branch in the same way, or maybe they do?
+  // User table has branchId.
   const [[adminCount]] = await pool.query(
-    `SELECT COUNT(*) AS totalAdmins FROM user WHERE roleId = 2`
+    `SELECT COUNT(*) AS totalAdmins FROM user u WHERE roleId = 2 ${getBranchFilter('u')}`
   );
 
   // ================================
@@ -185,15 +195,19 @@ export const superAdminDashboardService = async () => {
   // ================================
   const [[newAdmins]] = await pool.query(
     `SELECT COUNT(*) AS newAdmins 
-     FROM user 
-     WHERE roleId = 2 AND MONTH(createdAt) = MONTH(CURRENT_DATE())`
+     FROM user u
+     WHERE roleId = 2 AND MONTH(createdAt) = MONTH(CURRENT_DATE())
+     ${getBranchFilter('u')}`
   );
 
   // ================================
   // 5️⃣ BRANCH LEADERBOARD
   // ================================
+  // We keep the full leaderboard so the dropdown still shows all branches, 
+  // or maybe we don't filter the leaderboard so they can switch easily.
   const [branchLeaderboard] = await pool.query(
     `SELECT 
+        b.id AS branchId,
         b.name AS branchName,
         SUM(m.amountPaid) AS revenue,
         COUNT(m.id) AS newMembers
@@ -212,9 +226,10 @@ export const superAdminDashboardService = async () => {
     `SELECT 
     DAY(joinDate) AS day,
     SUM(amountPaid) AS revenue
-FROM member
+FROM member m
 WHERE MONTH(joinDate) = MONTH(CURRENT_DATE())
   AND YEAR(joinDate) = YEAR(CURRENT_DATE())
+  ${getBranchFilter('m')}
 GROUP BY DAY(joinDate)
 ORDER BY DAY(joinDate)
 `

@@ -2,12 +2,12 @@ import { pool } from "../../config/db.js";
 
 // Create a new purchase
 export const createPurchaseService = async (data) => {
-  const { selectedPlan, companyName, email, billingDuration, startDate } = data;
+  const { selectedPlan, companyName, email, billingDuration, startDate, amount, phone, adminName, branchName } = data;
 
   const [result] = await pool.query(
-    `INSERT INTO purchase (selectedPlan, companyName, email, billingDuration, startDate) 
-     VALUES (?, ?, ?, ?, ?)`,
-    [selectedPlan, companyName, email, billingDuration, new Date(startDate)]
+    `INSERT INTO purchase (selectedPlan, companyName, email, billingDuration, startDate, amount, phone, adminName, branchName) 
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [selectedPlan, companyName, email, billingDuration, new Date(startDate), amount || 0, phone || "", adminName || "", branchName || ""]
   );
 
   const purchaseId = result.insertId;
@@ -16,8 +16,18 @@ export const createPurchaseService = async (data) => {
 };
 
 // Get all purchases
-export const getAllPurchasesService = async () => {
-  const [rows] = await pool.query(`SELECT * FROM purchase ORDER BY id DESC`);
+export const getAllPurchasesService = async (email) => {
+  let query = `SELECT * FROM purchase`;
+  const params = [];
+  
+  if (email) {
+    query += ` WHERE email = ?`;
+    params.push(email);
+  }
+  
+  query += ` ORDER BY id DESC`;
+
+  const [rows] = await pool.query(query, params);
   return rows;
 };
 

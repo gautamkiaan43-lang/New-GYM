@@ -16,7 +16,8 @@ export const createPurchase = async (req, res) => {
 
 export const getAllPurchases = async (req, res) => {
   try {
-    const list = await getAllPurchasesService();
+    const { email } = req.query;
+    const list = await getAllPurchasesService(email);
     return res.status(200).json({
       success: true,
       data: list

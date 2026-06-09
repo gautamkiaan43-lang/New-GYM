@@ -4,8 +4,12 @@ import {
   updateLeadService,
   deleteLeadService,
   getSuperAdminLeadsService,
+  getLeadsByStaffService,
+  bulkAllocateLeadsService,
+  getLeadDistributionService,
 } from "./lead.service.js";
 
+// Create a new lead
 export const addLead = async (req, res, next) => {
   try {
     const data = await addLeadService(req.body);
@@ -19,6 +23,7 @@ export const addLead = async (req, res, next) => {
   }
 };
 
+// Get all leads for an admin
 export const getAllLeads = async (req, res, next) => {
   try {
     const { adminId } = req.params;
@@ -26,27 +31,23 @@ export const getAllLeads = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "adminId is required" });
     }
     const leads = await getAllLeadsService(adminId);
-    res.json({
-      success: true,
-      leads,
-    });
+    res.json({ success: true, leads });
   } catch (err) {
     next(err);
   }
 };
 
+// Get all leads globally for Super Admin
 export const getSuperAdminLeads = async (req, res, next) => {
   try {
     const leads = await getSuperAdminLeadsService();
-    res.json({
-      success: true,
-      leads,
-    });
+    res.json({ success: true, leads });
   } catch (err) {
     next(err);
   }
 };
 
+// Update a lead
 export const updateLead = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -61,14 +62,70 @@ export const updateLead = async (req, res, next) => {
   }
 };
 
+// Delete a lead
 export const deleteLead = async (req, res, next) => {
   try {
     const { id } = req.params;
     await deleteLeadService(id);
+    res.json({ success: true, message: "Lead deleted successfully" });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /leads/staff/:staffId
+ * Sales Agent: Fetch ONLY leads assigned to this staff (Clash-Free CRM)
+ */
+export const getLeadsByStaff = async (req, res, next) => {
+  try {
+    const { staffId } = req.params;
+    if (!staffId) {
+      return res.status(400).json({ success: false, message: "staffId is required" });
+    }
+    const leads = await getLeadsByStaffService(staffId);
+    res.json({ success: true, leads });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /leads/bulk-allocate
+ * Admin: Bulk distribute N unassigned leads to one sales agent
+ */
+export const bulkAllocateLeads = async (req, res, next) => {
+  try {
+    const { adminId, staffId, count } = req.body;
+    if (!adminId || !staffId || !count) {
+      return res.status(400).json({
+        success: false,
+        message: "adminId, staffId, and count are required",
+      });
+    }
+    const result = await bulkAllocateLeadsService({ adminId, staffId, count });
     res.json({
       success: true,
-      message: "Lead deleted successfully",
+      message: `${result.allocatedCount} leads successfully allocated`,
+      data: result,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /leads/distribution/:adminId
+ * Admin: Get lead distribution summary across all sales agents
+ */
+export const getLeadDistribution = async (req, res, next) => {
+  try {
+    const { adminId } = req.params;
+    if (!adminId) {
+      return res.status(400).json({ success: false, message: "adminId is required" });
+    }
+    const data = await getLeadDistributionService(adminId);
+    res.json({ success: true, data });
   } catch (err) {
     next(err);
   }

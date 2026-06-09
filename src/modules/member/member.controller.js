@@ -2,6 +2,7 @@
 
 
 import { uploadToCloudinary } from "../../config/cloudinary.js";
+import { generateMemberTemplate } from "../../utils/templateGenerator.js";
 import {
   createMemberService,
   deleteMemberService,
@@ -15,8 +16,8 @@ import {
   renewMembershipService,
   updateMemberService,
   updateMemberRenewalStatusService,
-  getMembersByAdminAndGeneralMemberPlanService
-  
+  getMembersByAdminAndGeneralMemberPlanService,
+  importMembersService
 } from "./member.service.js";
 
 export const createMember = async (req, res, next) => {
@@ -361,3 +362,58 @@ export const getMembersByAdminAndGeneralMemberPlanController = async (req, res, 
     next(error);
   }
 };
+
+/**
+ * POST /members/import
+ * Upload an Excel/CSV file to bulk-import members
+ */
+export const importMembers = async (req, res, next) => {
+  try {
+    if (!req.files || !req.files.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No file uploaded. Please upload an Excel (.xlsx) or CSV file.",
+      });
+    }
+
+    const { adminId, branchId } = req.body;
+
+    if (!adminId) {
+      return res.status(400).json({
+        success: false,
+        message: "adminId is required",
+      });
+    }
+
+    const fileBuffer = req.files.file.data;
+    const result = await importMembersService(adminId, branchId || null, fileBuffer);
+
+    return res.status(200).json({
+      success: true,
+      message: `Import complete! ${result.successCount} member(s) added successfully.`,
+      successCount: result.successCount,
+      skippedCount: result.skippedCount,
+      skippedList: result.skippedList,
+    });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ success: false, message: err.message });
+    }
+    next(err);
+  }
+};
+
+/**
+ * GET /members/import/template
+ * Download the sample Excel template for member import
+ */
+export const downloadMemberTemplate = async (req, res, next) => {
+  try {
+    const buffer = generateMemberTemplate();
+    res.setHeader("Content-Disposition", "attachment; filename=Member_Import_Template.xlsx");
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    return res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};

@@ -121,7 +121,8 @@ export const login = async (req, res, next) => {
         staffId: user.staffId,
         memberId: user.memberId,   // ✅ ADD THIS LINE
 
-        profileImage: user.profileImage
+        profileImage: user.profileImage,
+        permissions: user.permissions
       }
     });
   } catch (err) {
@@ -194,8 +195,9 @@ export const changePasswordController = async (req, res, next) => {
 export const getAdminDashboard = async (req, res, next) => {
   try {
     const adminId = req.params.id; // or req.user.adminId
+    const branchId = req.query.branchId; // Get branchId from query parameters
 
-    const data = await getAdminDashboardData(adminId);
+    const data = await getAdminDashboardData(adminId, branchId);
 
     res.json({
       success: true,

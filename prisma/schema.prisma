@@ -229,6 +229,7 @@ model member {
   password                    String?
   status                      String                        @default("ACTIVE")
   planId                      Int?
+  goal                        String?
   discount                    Decimal?                      @default(0.00) @db.Decimal(10, 2)
   alert                       alert[]
   booking                     booking[]
@@ -601,6 +602,7 @@ model user {
   classschedule                classschedule[]
   member                       member[]
   session                      session[]
+  saas_payments                saas_payments[]
   branch_user_branchIdTobranch branch?         @relation("user_branchIdTobranch", fields: [branchId], references: [id], map: "User_branchId_fkey")
   role                         role            @relation(fields: [roleId], references: [id], map: "User_roleId_fkey")
   whatsappPlan                 String          @default("Basic") @db.VarChar(50)
@@ -690,6 +692,8 @@ model leads {
   status            String   @default("New")
   assignedToStaffId Int?
   notes             String?  @db.Text
+  branchId          Int?
+  followUpDate      DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   admin             user     @relation(fields: [adminId], references: [id])
@@ -713,4 +717,25 @@ model used_qr_nonces {
   memberId Int
   usedAt   DateTime @default(now())
   member   member   @relation(fields: [memberId], references: [id])
+}
+
+model saas_payments {
+  id            Int      @id @default(autoincrement())
+  adminId       Int
+  amount        Float
+  planType      String
+  paymentStatus String
+  transactionId String?
+  paymentDate   DateTime @default(now())
+  expiryDate    DateTime
+  createdAt     DateTime @default(now())
+  user          user     @relation(fields: [adminId], references: [id])
+}
+
+model demo_requests {
+  id        Int      @id @default(autoincrement())
+  email     String
+  phone     String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
 }

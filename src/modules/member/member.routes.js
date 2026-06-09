@@ -13,6 +13,8 @@ import {
   renewMembershipPlan,
   updateMember,
   updateMemberRenewalStatus,
+  importMembers,
+  downloadMemberTemplate,
 } from "./member.controller.js";
 // import { verifyToken } from "../../middlewares/auth.js";
 
@@ -72,4 +74,9 @@ router.get(
 
 router.get("/pt-bookings/:branchId", listPTBookings);
 
+/** Excel Member Import */
+router.post("/import", importMembers);
+router.get("/import/template", downloadMemberTemplate);
+
 export default router;
+
