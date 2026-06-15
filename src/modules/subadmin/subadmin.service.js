@@ -1,6 +1,23 @@
 import { pool } from "../../config/db.js";
 import bcrypt from "bcryptjs";
 
+const processPermissions = (permissions) => {
+  if (!permissions) return JSON.stringify([]);
+  if (typeof permissions === "string") {
+    try {
+      const parsed = JSON.parse(permissions);
+      if (Array.isArray(parsed)) {
+        return JSON.stringify(parsed);
+      }
+    } catch (e) {}
+    return JSON.stringify([permissions]);
+  }
+  if (Array.isArray(permissions)) {
+    return JSON.stringify(permissions);
+  }
+  return JSON.stringify([]);
+};
+
 // Create Subadmin
 export const createSubAdminService = async (data) => {
   const { fullName, email, phone, password, permissions, profileImage } = data;
@@ -19,8 +36,7 @@ export const createSubAdminService = async (data) => {
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
-  // Default empty array if permissions not provided
-  const perms = permissions ? JSON.stringify(permissions) : JSON.stringify([]);
+  const perms = processPermissions(permissions);
 
   // Insert into user with roleId = 9 (Subadmin)
   const [result] = await pool.query(
@@ -58,7 +74,7 @@ export const updateSubAdminService = async (id, data) => {
 
   if (permissions !== undefined) {
     updates.push("permissions = ?");
-    values.push(JSON.stringify(permissions));
+    values.push(processPermissions(permissions));
   }
 
   if (profileImage !== undefined) {

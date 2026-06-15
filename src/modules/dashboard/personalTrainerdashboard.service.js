@@ -67,6 +67,7 @@ export const getAdminDashboardService = async (adminId) => {
   const [activityRows] = await pool.query(
     `SELECT 
         ma.id,
+        ma.memberId,
         m.fullName,
         ma.checkIn,
         ma.status,
@@ -82,6 +83,7 @@ export const getAdminDashboardService = async (adminId) => {
 
   const recentActivities = activityRows.map((row) => ({
     id: row.id,
+    memberId: row.memberId,
     memberName: row.fullName,
     time: row.checkIn,
     status: row.status,

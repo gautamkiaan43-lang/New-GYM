@@ -1,5 +1,5 @@
 import { pool } from "../../config/db.js";
-import { sendPaymentReceipt } from "../../utils/whatsappHelper.js";
+import { dispatchNotification } from "../../utils/notificationDispatcher.js";
 
 // --- Invoice generator ---
 function generateInvoiceNo() {
@@ -31,10 +31,18 @@ export const recordPaymentService = async (data) => {
     [memberId, planId, amount, generateInvoiceNo()]
   );
 
-  // Trigger WhatsApp receipt if phone is available
-  if (member.phone) {
-    sendPaymentReceipt(member.phone, member.fullName, amount, plan.name).catch(console.error);
-  }
+  // Trigger global notification dispatch based on Super Admin configurations
+  const receiptMsg = `Hi ${member.fullName}, \n\nThank you for your payment of Rs.${amount} for the ${plan.name} plan. \n\nYour membership is now active. Enjoy your workout! 💪\n\nRegards,\nGym Management`;
+  
+  dispatchNotification({
+    category: "invoice",
+    toEmail: member.email,
+    toPhone: member.phone,
+    toUserId: member.userId,
+    memberId: member.id,
+    subject: `Payment Receipt - ${plan.name}`,
+    message: receiptMsg,
+  }).catch(err => console.error("Error dispatching payment notification:", err.message));
 
   return {
     id: result.insertId,

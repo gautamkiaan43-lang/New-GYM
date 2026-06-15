@@ -34,9 +34,9 @@ model app_settings {
   createdAt         DateTime? @default(now()) @db.DateTime(0)
   updatedAt         DateTime? @default(now()) @db.DateTime(0)
   adminId           Int?
-  hero_banner       String?   @db.VarChar(500)
-  hero_subtitle     String?   @db.Text
   hero_title        String?   @db.VarChar(255)
+  hero_subtitle     String?   @db.Text
+  hero_banner       String?   @db.VarChar(500)
   services_json     String?   @db.Text
   testimonials_json String?   @db.Text
 }
@@ -75,7 +75,6 @@ model branch {
   address                    String?
   status                     branch_status @default(ACTIVE)
   adminId                    Int?
-  attendanceRadiusMeters     Int           @default(50)
   alert                      alert[]
   user_branch_adminIdTouser  user?         @relation("branch_adminIdTouser", fields: [adminId], references: [id], onDelete: Restrict, map: "Branch_adminId_fkey")
   expense                    expense[]
@@ -84,6 +83,7 @@ model branch {
   product                    product[]
   session                    session[]
   user_user_branchIdTobranch user[]        @relation("user_branchIdTobranch")
+  attendanceRadiusMeters     Int           @default(50)
 
   @@index([adminId], map: "Branch_adminId_fkey")
 }
@@ -229,21 +229,20 @@ model member {
   password                    String?
   status                      String                        @default("ACTIVE")
   planId                      Int?
-  discount                    Decimal?                      @default(0.00) @db.Decimal(10, 2)
   goal                        String?
+  discount                    Decimal?                      @default(0.00) @db.Decimal(10, 2)
   alert                       alert[]
   booking                     booking[]
   dietplanassignment          dietplanassignment[]
   branch                      branch?                       @relation(fields: [branchId], references: [id], onDelete: Restrict, map: "Member_branchId_fkey")
   user                        user?                         @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "fk_member_user")
-  member_health_log           member_health_log[]
   member_plan_assignment      member_plan_assignment[]
   membership_renewal_requests membership_renewal_requests[]
   notificationlog             notificationlog[]
   payment                     payment[]
-  used_qr_nonces              used_qr_nonces[]
   workoutplanassignment       workoutplanassignment[]
-  member_assessments          member_assessments[]
+  member_health_log           member_health_log[]
+  used_qr_nonces              used_qr_nonces[]
 
   @@index([branchId], map: "Member_branchId_idx")
   @@index([userId], map: "fk_member_user")
@@ -284,10 +283,10 @@ model memberattendance {
   status    String?   @db.VarChar(20)
   mode      String?   @db.VarChar(20)
   shiftId   Int?
-  deviceId  String?
-  ipAddress String?   @db.VarChar(45)
   latitude  Decimal?  @db.Decimal(10, 8)
   longitude Decimal?  @db.Decimal(11, 8)
+  deviceId  String?   @db.VarChar(191)
+  ipAddress String?   @db.VarChar(45)
 }
 
 model memberplan {
@@ -432,10 +431,6 @@ model purchase {
   startDate       DateTime
   purchaseDate    DateTime @default(now())
   status          String   @default("pending")
-  amount          Decimal? @default(0.00) @db.Decimal(10, 2)
-  phone           String?  @db.VarChar(20)
-  adminName       String?
-  branchName      String?
 }
 
 model role {
@@ -512,8 +507,8 @@ model staff {
   exitDate     DateTime?
   profilePhoto String?
   status       String    @default("Active")
-  leads        leads[]
   salary       salary[]
+  leads        leads[]
 }
 
 model staffattendance {
@@ -601,25 +596,18 @@ model user {
   gstNumber                    String?         @db.VarChar(50)
   tax                          Decimal?        @db.Decimal(10, 2)
   gymAddress                   String?         @db.Text
-  licenseExpiryDate            DateTime?
-  licenseKey                   String?         @db.VarChar(255)
-  whatsappPlan                 String          @default("Basic") @db.VarChar(50)
-  permissions                  String?         @db.LongText
-  visiblePassword              String?         @db.VarChar(255)
-  whatsappCredits              Int             @default(0)
-  isTrial                      Boolean         @default(false)
-  trialStartDate               DateTime?       @db.DateTime(0)
-  trialEndDate                 DateTime?       @db.DateTime(0)
-  subscriptionPlan             String?         @default("Basic") @db.VarChar(50)
   alert                        alert[]
+  leads                        leads[]
   branch_branch_adminIdTouser  branch[]        @relation("branch_adminIdTouser")
   classschedule                classschedule[]
-  leads                        leads[]
   member                       member[]
-  saas_payments                saas_payments[]
   session                      session[]
+  saas_payments                saas_payments[]
   branch_user_branchIdTobranch branch?         @relation("user_branchIdTobranch", fields: [branchId], references: [id], map: "User_branchId_fkey")
   role                         role            @relation(fields: [roleId], references: [id], map: "User_roleId_fkey")
+  whatsappPlan                 String          @default("Basic") @db.VarChar(50)
+  licenseExpiryDate            DateTime?
+  licenseKey                   String?         @db.VarChar(255)
 
   @@index([branchId], map: "User_branchId_idx")
   @@index([roleId], map: "User_roleId_idx")
@@ -660,134 +648,6 @@ model workoutplanassignment {
   @@index([workoutPlanId], map: "WorkoutPlanAssignment_workoutPlanId_idx")
 }
 
-model leads {
-  id                Int       @id @default(autoincrement())
-  adminId           Int
-  fullName          String
-  email             String?
-  phone             String
-  gender            String?
-  source            String    @default("Landing Page")
-  status            String    @default("New")
-  assignedToStaffId Int?
-  notes             String?   @db.Text
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  branchId          Int?
-  followUpDate      DateTime?
-  admin             user      @relation(fields: [adminId], references: [id])
-  staff             staff?    @relation(fields: [assignedToStaffId], references: [id])
-
-  @@index([adminId], map: "leads_adminId_fkey")
-  @@index([assignedToStaffId], map: "leads_assignedToStaffId_fkey")
-}
-
-model member_health_log {
-  id             Int      @id @default(autoincrement())
-  memberId       Int
-  height         Decimal  @db.Decimal(5, 2)
-  weight         Decimal  @db.Decimal(5, 2)
-  bmi            Decimal  @db.Decimal(5, 2)
-  status         String
-  recordedAt     DateTime @default(now())
-  trainerId      Int?
-  neck_cm        Decimal? @db.Decimal(4, 1)
-  waist_cm       Decimal? @db.Decimal(4, 1)
-  hip_cm         Decimal? @db.Decimal(4, 1)
-  resting_hr     Int?
-  activity_level String?  @db.VarChar(50)
-  fitness_goal   String?  @db.VarChar(50)
-  notes          String?  @db.Text
-  dietChart      String?  @db.Text
-  bmiStatus      String?  @db.VarChar(255)
-  member         member   @relation(fields: [memberId], references: [id])
-
-  @@index([memberId], map: "member_health_log_memberId_fkey")
-}
-
-model used_qr_nonces {
-  id       Int      @id @default(autoincrement())
-  nonce    String   @unique
-  memberId Int
-  usedAt   DateTime @default(now())
-  member   member   @relation(fields: [memberId], references: [id])
-
-  @@index([memberId], map: "used_qr_nonces_memberId_fkey")
-}
-
-model saas_payments {
-  id            Int      @id @default(autoincrement())
-  adminId       Int
-  amount        Float
-  planType      String
-  paymentStatus String
-  transactionId String?
-  paymentDate   DateTime @default(now())
-  expiryDate    DateTime
-  createdAt     DateTime @default(now())
-  user          user     @relation(fields: [adminId], references: [id])
-
-  @@index([adminId], map: "saas_payments_adminId_fkey")
-}
-
-model demo_requests {
-  id        Int      @id @default(autoincrement())
-  email     String
-  phone     String
-  status    String   @default("pending")
-  createdAt DateTime @default(now())
-}
-
-model announcement {
-  id          Int      @id @default(autoincrement())
-  subject     String   @db.VarChar(255)
-  message     String   @db.Text
-  channels    String   @db.VarChar(255)
-  targetRoles String   @db.VarChar(255)
-  sentBy      Int?
-  createdAt   DateTime @default(now()) @db.Timestamp(0)
-}
-
-model global_settings {
-  key_name   String    @id
-  value_data String    @db.Text
-  updatedAt  DateTime? @default(now()) @db.DateTime(0)
-}
-
-model landing_page_cms {
-  id               Int       @id @default(autoincrement())
-  adminId          Int
-  heroTitle        String?   @db.VarChar(255)
-  heroSubtitle     String?   @db.VarChar(255)
-  bannerUrl        String?   @db.VarChar(500)
-  featuresJson     String?   @db.Text
-  testimonialsJson String?   @db.Text
-  createdAt        DateTime? @default(now()) @db.DateTime(0)
-  updatedAt        DateTime? @default(now()) @db.DateTime(0)
-}
-
-model marketing_campaigns {
-  id              Int       @id @default(autoincrement())
-  adminId         Int
-  campaignName    String
-  templateMessage String    @db.Text
-  channel         String    @db.VarChar(50)
-  recipientCount  Int
-  status          String    @default("pending") @db.VarChar(50)
-  scheduledAt     DateTime? @db.DateTime(0)
-  createdAt       DateTime? @default(now()) @db.DateTime(0)
-}
-
-model whatsapp_credit_transactions {
-  id               Int       @id @default(autoincrement())
-  adminId          Int
-  creditsPurchased Int
-  amountPaid       Float
-  paymentStatus    String    @db.VarChar(50)
-  transactionId    String?
-  createdAt        DateTime? @default(now()) @db.DateTime(0)
-}
-
 enum plan_duration {
   Monthly
   Yearly
@@ -821,61 +681,61 @@ enum unified_bookings_bookingType {
   GROUP
 }
 
-enum activity_level_enum {
-  sedentary
-  light
-  moderate
-  active
+model leads {
+  id                Int      @id @default(autoincrement())
+  adminId           Int
+  fullName          String
+  email             String?
+  phone             String
+  gender            String?
+  source            String   @default("Landing Page")
+  status            String   @default("New")
+  assignedToStaffId Int?
+  notes             String?  @db.Text
+  branchId          Int?
+  followUpDate      DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  admin             user     @relation(fields: [adminId], references: [id])
+  staff             staff?   @relation(fields: [assignedToStaffId], references: [id])
 }
 
-enum fitness_goal_enum {
-  fat_loss
-  maintenance
-  muscle_gain
+model member_health_log {
+  id         Int      @id @default(autoincrement())
+  memberId   Int
+  height     Decimal  @db.Decimal(5, 2)
+  weight     Decimal  @db.Decimal(5, 2)
+  bmi        Decimal  @db.Decimal(5, 2)
+  status     String
+  recordedAt DateTime @default(now())
+  member     member   @relation(fields: [memberId], references: [id])
 }
 
-model member_assessments {
-  id                  Int                 @id @default(autoincrement())
-  memberId            Int
-  assessment_date     DateTime            @default(now())
-  
-  // Traceability & Audit
-  engine_version      String              @default("1.0.0") @db.VarChar(50)
-  config_snapshot     Json
-  createdBy           Int                 // ID of trainer/admin who created it
-  
-  // Inputs Snapshot
-  age_at_assessment   Int
-  gender_at_assessment String             @db.VarChar(10)
-  weight_kg           Decimal             @db.Decimal(5, 2)
-  height_cm           Decimal             @db.Decimal(5, 2)
-  neck_cm             Decimal             @db.Decimal(4, 1)
-  waist_cm            Decimal             @db.Decimal(4, 1)
-  hip_cm              Decimal?            @db.Decimal(4, 1)
-  resting_hr          Int
-  activity_level      activity_level_enum
-  fitness_goal        fitness_goal_enum
-  
-  // Computed Metrics
-  bmi                 Decimal             @db.Decimal(5, 2)
-  body_fat_percentage Decimal             @db.Decimal(5, 2)
-  lean_body_mass      Decimal             @db.Decimal(5, 2)
-  ideal_body_weight   Decimal             @db.Decimal(5, 2)
-  waist_to_hip_ratio  Decimal?            @db.Decimal(4, 2)
-  bmr                 Decimal             @db.Decimal(6, 2)
-  tdee                Decimal             @db.Decimal(6, 2)
-  target_calories     Int
-  
-  // Macros
-  protein_grams       Int
-  fat_grams           Int
-  carb_grams          Int
-  
-  // Extra Dashboard Metadata
-  metrics_output      Json?
-  
-  createdAt           DateTime            @default(now())
-  member              member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+model used_qr_nonces {
+  id       Int      @id @default(autoincrement())
+  nonce    String   @unique
+  memberId Int
+  usedAt   DateTime @default(now())
+  member   member   @relation(fields: [memberId], references: [id])
+}
 
-  @@index([memberId])
+model saas_payments {
+  id            Int      @id @default(autoincrement())
+  adminId       Int
+  amount        Float
+  planType      String
+  paymentStatus String
+  transactionId String?
+  paymentDate   DateTime @default(now())
+  expiryDate    DateTime
+  createdAt     DateTime @default(now())
+  user          user     @relation(fields: [adminId], references: [id])
+}
+
+model demo_requests {
+  id        Int      @id @default(autoincrement())
+  email     String
+  phone     String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
 }

@@ -46,8 +46,7 @@ app.use(
       "https://gym-latest-new.netlify.app",
       "https://gym-speed-fitness.netlify.app",
       "https://speedfitness.live",
-      "https://gym-mgt-0.netlify.app",
-      "http://gym-mgt-0.netlify.app",
+      "https://gym-mgt-0.netlify.app"
 
 
     ],

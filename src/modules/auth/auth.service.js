@@ -259,6 +259,7 @@ export const loginUser = async ({ email, password }) => {
   const token = jwt.sign(
     {
       id: user.id,          // userId (auth)
+      role: user.roleName,  // "Superadmin", "Admin", etc.
       roleId: user.roleId,
       branchId: user.branchId,
       adminId: user.adminId,
@@ -291,7 +292,18 @@ export const loginUser = async ({ email, password }) => {
       memberId: memberId,   // ✅ NOW GUARANTEED
 
       profileImage: user.profileImage || null,
-      permissions: user.permissions ? JSON.parse(user.permissions) : [],
+      permissions: (() => {
+        if (!user.permissions) return [];
+        try {
+          let parsed = JSON.parse(user.permissions);
+          if (typeof parsed === "string") {
+            parsed = JSON.parse(parsed);
+          }
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+          return [];
+        }
+      })(),
     },
   };
 };
@@ -458,6 +470,18 @@ if (data?.tax !== undefined) {
 if (data?.gymAddress) {
   updatedData.gymAddress = data.gymAddress;
   updatedFields.push('gymAddress');
+}
+
+// ✅ Subscription Plan (Basic / Growth / Premium)
+if (data?.subscriptionPlan) {
+  updatedData.subscriptionPlan = data.subscriptionPlan;
+  updatedFields.push('subscriptionPlan');
+}
+
+// ✅ License Expiry Date
+if (data?.licenseExpiryDate) {
+  updatedData.licenseExpiryDate = data.licenseExpiryDate;
+  updatedFields.push('licenseExpiryDate');
 }
 
 

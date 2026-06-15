@@ -11,8 +11,19 @@ export const verifyToken = (roles = []) => {
       const decoded = jwt.verify(token, ENV.jwtSecret);
       req.user = decoded;
 
-      if (roles.length && !roles.includes(decoded.role)) {
-        throw { status: 403, message: "Access denied" };
+      if (roles.length) {
+        // Fallback mapping if role name string is missing in JWT payload
+        let userRoleName = decoded.role;
+        if (!userRoleName && decoded.roleId) {
+          if (decoded.roleId === 1) userRoleName = "Superadmin";
+          else if (decoded.roleId === 2) userRoleName = "Admin";
+          else if (decoded.roleId === 4) userRoleName = "Member";
+          else userRoleName = "Staff"; // covers other staff roles
+        }
+
+        if (!roles.includes(userRoleName)) {
+          throw { status: 403, message: "Access denied" };
+        }
       }
 
       next();

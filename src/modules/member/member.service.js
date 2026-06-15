@@ -1,5 +1,6 @@
 import { pool } from "../../config/db.js";
 import XLSX from "xlsx";
+import { dispatchNotification } from "../../utils/notificationDispatcher.js";
 
 /**************************************
  * CREATE MEMBER
@@ -201,6 +202,39 @@ export const createMemberService = async (data) => {
   }
 
   console.log(`✅ Total plans assigned: ${assignedPlans.length} out of ${plansToAssign.length} requested`);
+
+  // Send welcome note using global channels configured by Super Admin
+  const welcomeMsg = `Hi ${fullName},\n\nWelcome to our gym! 🏋️‍♂️ Your membership is registered successfully.\n\nLogin credentials:\nEmail: ${email}\nPassword: ${password}\n\nRegards,\nGym Management`;
+  
+  dispatchNotification({
+    category: "welcome_note",
+    toEmail: email,
+    toPhone: phone,
+    toUserId: userId,
+    memberId: memberId,
+    subject: "Welcome to Our Gym! 🏋️‍♂️",
+    message: welcomeMsg,
+  }).catch(err => console.error("Error sending welcome note notification:", err.message));
+
+  // Send invoice receipt if paid during creation
+  if (amountPaid && Number(amountPaid) > 0) {
+    let planNames = "Gym Plan";
+    if (assignedPlans && assignedPlans.length > 0) {
+      planNames = assignedPlans.map(p => p.planName).join(", ");
+    }
+    
+    const invoiceMsg = `Hi ${fullName},\n\nThank you for your payment of Rs.${amountPaid} for the ${planNames} plan(s).\n\nYour membership is now active. Enjoy your workout! 💪\n\nRegards,\nGym Management`;
+
+    dispatchNotification({
+      category: "invoice",
+      toEmail: email,
+      toPhone: phone,
+      toUserId: userId,
+      memberId: memberId,
+      subject: `Payment Receipt - ${planNames} 🧾`,
+      message: invoiceMsg,
+    }).catch(err => console.error("Error sending registration invoice notification:", err.message));
+  }
 
   return {
     message: "Member created successfully",
@@ -1061,7 +1095,7 @@ export const updateMemberRenewalStatusService = async (
   // 1️⃣ Check member belongs to admin & is inactive
   const [[member]] = await pool.query(
     `
-    SELECT id, status 
+    SELECT id, userId, fullName, email, phone, status, planId, membershipFrom, membershipTo, paymentMode, amountPaid 
     FROM member
     WHERE id = ?
       AND adminId = ?
@@ -1077,7 +1111,7 @@ export const updateMemberRenewalStatusService = async (
     };
   }
 
-  // 2️⃣ Update status
+  // 2️⃣ Update status in member table
   await pool.query(
     `
     UPDATE member
@@ -1087,7 +1121,64 @@ export const updateMemberRenewalStatusService = async (
     [status, memberId]
   );
 
-  // 3️⃣ Return updated record
+  // 3️⃣ Update status in user table
+  await pool.query(
+    `
+    UPDATE user
+    SET status = ?
+    WHERE id = ?
+    `,
+    [status, member.userId]
+  );
+
+  // 4️⃣ Insert into member_plan_assignment if approved and assignment doesn't exist
+  if (status === "Active" && member.planId) {
+    const [existingAssign] = await pool.query(
+      `SELECT id FROM member_plan_assignment 
+       WHERE memberId = ? AND planId = ? AND membershipFrom = ? AND membershipTo = ?`,
+      [member.id, member.planId, member.membershipFrom, member.membershipTo]
+    );
+
+    if (existingAssign.length === 0) {
+      await pool.query(
+        `INSERT INTO member_plan_assignment 
+          (memberId, planId, membershipFrom, membershipTo, paymentMode, amountPaid, status, assignedBy, assignedAt)
+         VALUES (?, ?, ?, ?, ?, ?, 'Active', ?, NOW())`,
+        [
+          member.id,
+          member.planId,
+          member.membershipFrom,
+          member.membershipTo,
+          member.paymentMode || null,
+          member.amountPaid || 0,
+          adminId,
+        ]
+      );
+      console.log(`✅ Automatically created plan assignment for renewed member ${member.id}`);
+    }
+
+    // 5️⃣ Dispatch invoice/payment notification on approval
+    // Fetch plan name
+    const [[planMeta]] = await pool.query(
+      "SELECT name FROM memberplan WHERE id = ?",
+      [member.planId]
+    );
+    const planName = planMeta ? planMeta.name : "Gym Plan";
+
+    const invoiceMsg = `Hi ${member.fullName},\n\nThank you for your payment of Rs.${member.amountPaid || 0} for the ${planName} plan.\n\nYour membership has been successfully renewed. Enjoy your workout! 💪\n\nRegards,\nGym Management`;
+
+    dispatchNotification({
+      category: "invoice",
+      toEmail: member.email,
+      toPhone: member.phone,
+      toUserId: member.userId,
+      memberId: member.id,
+      subject: `Payment Receipt - ${planName} 🧾`,
+      message: invoiceMsg,
+    }).catch(err => console.error("Error sending renewal invoice notification:", err.message));
+  }
+
+  // 6️⃣ Return updated record
   const [[updated]] = await pool.query(
     `
     SELECT 

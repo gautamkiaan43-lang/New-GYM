@@ -1,13 +1,13 @@
 import { pool } from "../../config/db.js";
 
 // ----- CREATE DIET PLAN -----
-export const createDietPlanService = async ({ title, notes, branchId, createdBy, meals }) => {
+export const createDietPlanService = async ({ title, notes, branchId, createdBy, meals, dietType }) => {
   if (!title) throw { status: 400, message: "Diet plan title is required" };
 
   // Insert diet plan
   const [planResult] = await pool.query(
-    "INSERT INTO dietplan (title, notes, branchId, createdBy) VALUES (?, ?, ?, ?)",
-    [title, notes || "", branchId || 0, createdBy || 0]
+    "INSERT INTO dietplan (title, notes, branchId, createdBy, dietType) VALUES (?, ?, ?, ?, ?)",
+    [title, notes || "", branchId || 0, createdBy || 0, dietType || 'Any']
   );
   const dietPlanId = planResult.insertId;
 
@@ -61,16 +61,16 @@ export const getDietPlanByIdService = async (id) => {
 };
 
 // ----- UPDATE DIET PLAN -----
-export const updateDietPlanService = async (id, { title, notes, meals }) => {
+export const updateDietPlanService = async (id, { title, notes, meals, dietType }) => {
   // Check if exists
   const [existing] = await pool.query("SELECT * FROM dietplan WHERE id = ?", [id]);
   if (existing.length === 0) throw { status: 404, message: "Diet plan not found" };
 
   // Update plan details
-  if (title || notes !== undefined) {
+  if (title !== undefined || notes !== undefined || dietType !== undefined) {
     await pool.query(
-      "UPDATE dietplan SET title = COALESCE(?, title), notes = COALESCE(?, notes) WHERE id = ?",
-      [title, notes, id]
+      "UPDATE dietplan SET title = COALESCE(?, title), notes = COALESCE(?, notes), dietType = COALESCE(?, dietType) WHERE id = ?",
+      [title, notes, dietType, id]
     );
   }
 

@@ -40,6 +40,8 @@ import adminSettingsRoutes from "../modules/appSettings/appSetting.routes.js"
 import leadRoutes from "../modules/leads/lead.routes.js";
 import healthRoutes from "../modules/health/health.routes.js";
 import subadminRoutes from "../modules/subadmin/subadmin.routes.js";
+import globalSettingRoutes from "../modules/globalSettings/globalSetting.routes.js";
+import assessmentRoutes from "../modules/assessment/assessment.routes.js";
 const router = Router();
 
 // test route
@@ -87,5 +89,7 @@ router.use("/adminSettings", adminSettingsRoutes);
 router.use("/leads", leadRoutes);
 router.use("/health", healthRoutes);
 router.use("/subadmins", subadminRoutes);
+router.use("/global-settings", globalSettingRoutes);
+router.use("/v1/assessments", assessmentRoutes);
 
 export default router;
