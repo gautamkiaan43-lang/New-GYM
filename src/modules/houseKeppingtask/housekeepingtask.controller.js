@@ -14,6 +14,8 @@ export const createTask = async (req, res) => {
   try {
     const {
       assignedTo,
+      roleId,
+      adminId,
       branchId = null,
       taskTitle,
       dueDate,
@@ -21,7 +23,7 @@ export const createTask = async (req, res) => {
       description,
     } = req.body;
 
-    if (!assignedTo || !taskTitle || !dueDate || !priority || !description) {
+    if ((!assignedTo && !roleId) || !adminId || !taskTitle || !dueDate || !priority || !description) {
       return res.status(400).json({
         success: false,
         message: "Please fill all fields",
@@ -29,7 +31,9 @@ export const createTask = async (req, res) => {
     }
 
     const task = await createTaskService({
-      assignedTo,
+      assignedTo: assignedTo || null,
+      roleId: roleId || null,
+      adminId,
       branchId,
       taskTitle,
       dueDate,

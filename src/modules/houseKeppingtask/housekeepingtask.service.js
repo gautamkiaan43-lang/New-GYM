@@ -1,34 +1,24 @@
 import { pool } from "../../config/db.js";
 
 export const createTaskService = async (data) => {
-  const { assignedTo, branchId, taskTitle, dueDate, priority, description } =
+  const { assignedTo, roleId, adminId, branchId, taskTitle, dueDate, priority, description } =
     data;
   try {
-    // Step 1: Fetch the adminId from the staff table using assignedTo (staffId)
-    const [staff] = await pool.query("SELECT adminId FROM staff WHERE id = ?", [
-      assignedTo,
-    ]);
-
-    // Check if the staff exists
-    if (!staff || staff.length === 0) {
-      throw new Error("Staff not found");
-    }
-
-    // Step 2: Get the adminId from the result
-    const adminId = staff[0].adminId;
+    if (!adminId) throw new Error("adminId is required");
 
     // Step 3: Insert the task into the tasks table
     const [result] = await pool.query(
-      `INSERT INTO tasks (assignedTo, branchId, taskTitle, dueDate, priority, description, status, createdById)
-       VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?)`,
+      `INSERT INTO tasks (assignedTo, roleId, branchId, taskTitle, dueDate, priority, description, status, createdById)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'Assigned', ?)`,
       [
         assignedTo,
+        roleId,
         branchId,
         taskTitle,
         dueDate,
         priority,
         description,
-        adminId, // Use the adminId from the staff record as createdById
+        adminId, 
       ]
     );
 
@@ -62,31 +52,41 @@ export const getTasksByAdminIdService = async (adminId) => {
       [adminId]
     );
 
-    // Step 3: For each task, fetch staff (assignedTo) details and the staff's user details
+    // Step 3: For each task, fetch staff (assignedTo) details or role details
     for (let task of tasks) {
-      // Fetch staff details using assignedTo (staffId)
-      const [staffDetails] = await pool.query(
-        "SELECT id, userId, gender, dateOfBirth, joinDate, status FROM staff WHERE id = ?",
-        [task.assignedTo]
-      );
-
-      if (staffDetails && staffDetails.length > 0) {
-        const staff = staffDetails[0];
-
-        // Fetch user details for the staff based on userId
-        const [userDetails] = await pool.query(
-          "SELECT id, fullName, email, phone, roleId FROM user WHERE id = ?",
-          [staff.userId]
+      if (task.assignedTo) {
+        // Fetch staff details using assignedTo (staffId)
+        const [staffDetails] = await pool.query(
+          "SELECT id, userId, gender, dateOfBirth, joinDate, status FROM staff WHERE id = ?",
+          [task.assignedTo]
         );
 
-        // Add staff and user details to the task
-        task.staff = {
-          ...staff,
-          fullName: userDetails[0].fullName,
-          email: userDetails[0].email,
-          phone: userDetails[0].phone,
-          roleId: userDetails[0].roleId,
-        };
+        if (staffDetails && staffDetails.length > 0) {
+          const staff = staffDetails[0];
+
+          // Fetch user details for the staff based on userId
+          const [userDetails] = await pool.query(
+            "SELECT id, fullName, email, phone, roleId FROM user WHERE id = ?",
+            [staff.userId]
+          );
+
+          // Add staff and user details to the task
+          task.staff = {
+            ...staff,
+            fullName: userDetails[0].fullName,
+            email: userDetails[0].email,
+            phone: userDetails[0].phone,
+            roleId: userDetails[0].roleId,
+          };
+        }
+      } else if (task.roleId) {
+        const [roleDetails] = await pool.query(
+          "SELECT id, name FROM role WHERE id = ?",
+          [task.roleId]
+        );
+        if (roleDetails && roleDetails.length > 0) {
+          task.role = roleDetails[0];
+        }
       }
 
       // Add the admin details to the task
@@ -113,10 +113,26 @@ export const getTaskByBranchIdService = async (branchId) => {
   return rows;
 };
 
-export const getTaskAsignedService = async (assignedTo) => {
+export const getTaskAsignedService = async (userId) => {
+  // Fetch staffId and roleId based on userId
+  const [staffRows] = await pool.query(
+    `SELECT staff.id as staffId, user.roleId 
+     FROM user 
+     LEFT JOIN staff ON staff.userId = user.id 
+     WHERE user.id = ?`,
+    [userId]
+  );
+  
+  if (!staffRows || staffRows.length === 0) {
+    return [];
+  }
+  
+  const staffId = staffRows[0].staffId;
+  const roleId = staffRows[0].roleId;
+
   const [rows] = await pool.query(
-    `SELECT * FROM tasks WHERE assignedTo=? ORDER BY id DESC`,
-    [assignedTo]
+    `SELECT * FROM tasks WHERE assignedTo = ? OR roleId = ? ORDER BY id DESC`,
+    [staffId, roleId]
   );
   return rows;
 };

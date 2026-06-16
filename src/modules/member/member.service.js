@@ -946,6 +946,8 @@ export const getMembersByAdminIdService = async (adminId) => {
         mp.validityDays,
         mp.price,
         mp.type as planType,
+        mp.trainerId,
+        t.fullName as trainerName,
         DATEDIFF(mpa.membershipTo, CURDATE()) as remainingDays,
         CASE
           WHEN mpa.membershipTo < CURDATE() THEN 'Expired'
@@ -954,6 +956,7 @@ export const getMembersByAdminIdService = async (adminId) => {
         END AS computedStatus
       FROM member_plan_assignment mpa
       JOIN memberplan mp ON mpa.planId = mp.id
+      LEFT JOIN user t ON mp.trainerId = t.id
       WHERE mpa.memberId = ?
       ORDER BY mpa.membershipFrom DESC`,
       [member.id]

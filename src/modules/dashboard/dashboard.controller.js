@@ -193,9 +193,10 @@ export const getSuperAdminDashboard = async (req, res, next) => {
 //   }
 // };
 
-export const getReceptionistDashboard = async (req, res, next) => {
+export const getSalesDashboard = async (req, res, next) => {
   try {
     const adminId = Number(req.query.adminId);
+    const branchId = req.query.branchId ? Number(req.query.branchId) : null;
 
     if (!adminId) {
       return res.status(400).json({
@@ -204,104 +205,177 @@ export const getReceptionistDashboard = async (req, res, next) => {
       });
     }
 
+    const bIdFilter = branchId ? "AND branchId = ?" : "";
+    const bIdParams = branchId ? [adminId, branchId] : [adminId];
+
     /* =========================
-       WEEKLY ATTENDANCE
+       1️⃣ TOTAL REVENUE (This Month)
     ========================= */
-    const [weekly] = await pool.query(
+    const [[revenueThisMonth]] = await pool.query(
+      `
+      SELECT SUM(p.amount) AS total
+      FROM payment p
+      JOIN member m ON p.memberId = m.id
+      WHERE m.adminId = ?
+        ${branchId ? "AND m.branchId = ?" : ""}
+        AND MONTH(p.paymentDate) = MONTH(CURDATE())
+        AND YEAR(p.paymentDate) = YEAR(CURDATE())
+      `,
+      bIdParams
+    );
+
+    /* =========================
+       2️⃣ NEW REGISTRATIONS (This Week)
+    ========================= */
+    const [[newRegistrations]] = await pool.query(
+      `
+      SELECT COUNT(*) AS count
+      FROM member m
+      WHERE m.adminId = ?
+        ${bIdFilter}
+        AND m.createdAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+      `,
+      bIdParams
+    );
+
+    /* =========================
+       3️⃣ ACTIVE LEADS
+    ========================= */
+    const [[activeLeads]] = await pool.query(
+      `
+      SELECT COUNT(*) AS count
+      FROM leads
+      WHERE adminId = ?
+        ${bIdFilter}
+        AND status IN ('New', 'Contacted', 'Follow Up')
+      `,
+      bIdParams
+    );
+
+    /* =========================
+       4️⃣ PENDING RENEWALS
+    ========================= */
+    const [[pendingRenewals]] = await pool.query(
+      `
+      SELECT COUNT(*) AS count
+      FROM member_plan_assignment mpa
+      JOIN member m ON mpa.memberId = m.id
+      WHERE m.adminId = ?
+        ${branchId ? "AND m.branchId = ?" : ""}
+        AND mpa.membershipTo BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+        AND mpa.status = 'Active'
+      `,
+      bIdParams
+    );
+
+    /* =========================
+       5️⃣ REVENUE VS EXPENSES (Last 6 Months)
+    ========================= */
+    // Income
+    const [incomeData] = await pool.query(
       `
       SELECT 
-          DAYNAME(ma.checkIn) AS day,
-          COUNT(*) AS count,
-          DAYOFWEEK(ma.checkIn) AS sortOrder
-      FROM memberattendance ma
-      JOIN user u ON ma.memberId = u.id
-      WHERE DATE(ma.checkIn) >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-        AND u.adminId = ?
-      GROUP BY day, sortOrder
-      ORDER BY sortOrder
+        DATE_FORMAT(p.paymentDate, '%b') AS month,
+        YEAR(p.paymentDate) AS year,
+        SUM(p.amount) AS total
+      FROM payment p
+      JOIN member m ON p.memberId = m.id
+      WHERE m.adminId = ?
+        ${branchId ? "AND m.branchId = ?" : ""}
+        AND p.paymentDate >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+      GROUP BY year, month
+      ORDER BY year, MONTH(p.paymentDate)
       `,
-      [adminId]
+      bIdParams
+    );
+
+    // Expenses (Expense + Salary)
+    const [expenseDataRaw] = await pool.query(
+      `
+      SELECT 
+        DATE_FORMAT(e.date, '%b') AS month,
+        YEAR(e.date) AS year,
+        SUM(e.amount) AS total
+      FROM expense e
+      JOIN branch b ON e.branchId = b.id
+      WHERE b.adminId = ?
+        ${branchId ? "AND e.branchId = ?" : ""}
+        AND e.date >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+      GROUP BY year, month
+      `,
+      bIdParams
+    );
+    
+    // We can also fetch salaries but for simplicity and speed, let's just use expense table for now
+    
+    /* =========================
+       6️⃣ LEAD CONVERSION
+    ========================= */
+    const [leadConversion] = await pool.query(
+      `
+      SELECT status, COUNT(*) AS count
+      FROM leads
+      WHERE adminId = ?
+        ${bIdFilter}
+      GROUP BY status
+      `,
+      bIdParams
     );
 
     /* =========================
-       TODAY SUMMARY
+       7️⃣ RECENT TRANSACTIONS
     ========================= */
-    const [[present]] = await pool.query(
+    const [recentTransactions] = await pool.query(
       `
-      SELECT COUNT(*) AS count
-      FROM memberattendance ma
-      JOIN user u ON ma.memberId = u.id
-      WHERE DATE(ma.checkIn) = CURDATE()
-        AND u.adminId = ?
+      SELECT 
+        p.id,
+        p.invoiceNo,
+        p.amount,
+        p.paymentDate,
+        m.fullName AS memberName,
+        pl.name AS planName
+      FROM payment p
+      JOIN member m ON p.memberId = m.id
+      LEFT JOIN plan pl ON p.planId = pl.id
+      WHERE m.adminId = ?
+        ${branchId ? "AND m.branchId = ?" : ""}
+      ORDER BY p.paymentDate DESC
+      LIMIT 5
       `,
-      [adminId]
-    );
-
-    const [[active]] = await pool.query(
-      `
-      SELECT COUNT(*) AS count
-      FROM memberattendance ma
-      JOIN user u ON ma.memberId = u.id
-      WHERE DATE(ma.checkIn) = CURDATE()
-        AND ma.checkOut IS NULL
-        AND u.adminId = ?
-      `,
-      [adminId]
-    );
-
-    const [[completed]] = await pool.query(
-      `
-      SELECT COUNT(*) AS count
-      FROM memberattendance ma
-      JOIN user u ON ma.memberId = u.id
-      WHERE DATE(ma.checkIn) = CURDATE()
-        AND ma.checkOut IS NOT NULL
-        AND u.adminId = ?
-      `,
-      [adminId]
+      bIdParams
     );
 
     /* =========================
-       TODAY CHECK-INS COUNT
+       8️⃣ TODAY'S FOLLOW UPS (Leads)
     ========================= */
-    const [[todayCheckinsCount]] = await pool.query(
+    const [todayFollowUps] = await pool.query(
       `
-      SELECT COUNT(*) AS count
-      FROM memberattendance ma
-      JOIN user u ON ma.memberId = u.id
-      WHERE DATE(ma.checkIn) = CURDATE()
-        AND u.adminId = ?
+      SELECT id, fullName, phone, status, followUpDate
+      FROM leads
+      WHERE adminId = ?
+        ${bIdFilter}
+        AND DATE(followUpDate) = CURDATE()
+      LIMIT 5
       `,
-      [adminId]
+      bIdParams
     );
-
-    /* =========================
-       REVENUE (Admin wise)
-    ========================= */
-  const [[revenue]] = await pool.query(
-  `
-  SELECT SUM(p.amount) AS total
-  FROM payment p
-  JOIN user u ON p.memberId = u.id
-  WHERE u.adminId = ?
-  `,
-  [adminId]
-);
-
 
     res.json({
       success: true,
       dashboard: {
-        weeklyTrend: weekly,
-        todayCheckinsCount: todayCheckinsCount.count,
         summary: {
-          present: present.count,
-          active: active.count,
-          completed: completed.count,
+          totalRevenue: revenueThisMonth?.total || 0,
+          newRegistrations: newRegistrations?.count || 0,
+          activeLeads: activeLeads?.count || 0,
+          pendingRenewals: pendingRenewals?.count || 0,
         },
-        revenue: {
-          total: revenue?.total || 0,
+        profitAndLoss: {
+          income: incomeData,
+          expenses: expenseDataRaw,
         },
+        leadConversion: leadConversion,
+        recentTransactions: recentTransactions,
+        todayFollowUps: todayFollowUps,
       },
     });
 

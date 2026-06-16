@@ -911,6 +911,36 @@ const recentActivitiesQuery = `
   LIMIT 5;
   `;
 
+  // REVENUE GROWTH (Admin-wise last 6 months)
+  const revenueGrowthQuery = `
+    SELECT 
+      DATE_FORMAT(MIN(p.paymentDate), '%b') AS month,
+      SUM(p.amount) AS totalRevenue
+    FROM payment p
+    JOIN member m ON p.memberId = m.id
+    WHERE m.adminId = ?
+      ${bId ? "AND m.branchId = ?" : ""}
+      AND p.paymentDate >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
+    GROUP BY YEAR(p.paymentDate), MONTH(p.paymentDate)
+    ORDER BY YEAR(p.paymentDate), MONTH(p.paymentDate);
+  `;
+
+  // RECENT PAYMENTS
+  const recentPaymentsQuery = `
+    SELECT 
+      p.id,
+      m.fullName as memberName,
+      p.amount,
+      p.paymentDate as date,
+      p.invoiceNo
+    FROM payment p
+    JOIN member m ON p.memberId = m.id
+    WHERE m.adminId = ?
+      ${bId ? "AND m.branchId = ?" : ""}
+    ORDER BY p.paymentDate DESC
+    LIMIT 10;
+  `;
+
   const statsParams = [];
   statsParams.push(adminId); if (bId) statsParams.push(bId);
   statsParams.push(adminId); if (bId) statsParams.push(bId);
@@ -930,10 +960,20 @@ const recentActivitiesQuery = `
 
   const [recentActivities] = await pool.query(recentActivitiesQuery, recentParams);
 
+  const revenueParams = [adminId];
+  if (bId) revenueParams.push(bId);
+  const [revenueGrowth] = await pool.query(revenueGrowthQuery, revenueParams);
+
+  const paymentParams = [adminId];
+  if (bId) paymentParams.push(bId);
+  const [recentPayments] = await pool.query(recentPaymentsQuery, paymentParams);
+
   return {
     ...stats[0],
     memberGrowth,
-     recentActivities
+    recentActivities,
+    revenueGrowth,
+    recentPayments
   };
 };
 

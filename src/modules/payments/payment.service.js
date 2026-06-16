@@ -66,16 +66,23 @@ export const paymentHistoryService = async (memberId) => {
   return rows;
 };
 
-// --- ALL PAYMENTS BY BRANCH ---
-export const allPaymentsService = async (branchId) => {
-  const [rows] = await pool.query(
-    `SELECT p.*, m.fullName AS memberName, pl.name AS planName, pl.price AS planPrice
+// --- ALL PAYMENTS BY ADMIN/BRANCH ---
+export const allPaymentsService = async (adminId, branchId) => {
+  let query = `SELECT p.*, m.fullName AS memberName, pl.name AS planName, pl.price AS planPrice
      FROM payment p
      LEFT JOIN member m ON p.memberId = m.id
      LEFT JOIN plan pl ON p.planId = pl.id
-     WHERE m.branchId = ?
-     ORDER BY p.id DESC`,
-    [branchId]
-  );
+     WHERE m.adminId = ?`;
+     
+  const params = [adminId];
+  
+  if (branchId && branchId !== 'all' && branchId !== '') {
+    query += ` AND m.branchId = ?`;
+    params.push(branchId);
+  }
+  
+  query += ` ORDER BY p.id DESC`;
+
+  const [rows] = await pool.query(query, params);
   return rows;
 };

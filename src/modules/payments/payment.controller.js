@@ -25,8 +25,9 @@ export const paymentHistory = async (req, res, next) => {
 
 export const allPayments = async (req, res, next) => {
   try {
-    const branchId = parseInt(req.params.branchId);
-    const list = await allPaymentsService(branchId);
+    const branchId = req.params.branchId;
+    const adminId = req.query.adminId; // Need adminId from query for proper fetching
+    const list = await allPaymentsService(adminId, branchId);
     res.json({ success: true, payments: list });
   } catch (err) {
     next(err);
